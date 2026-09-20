@@ -1,241 +1,110 @@
 # Preference-Sensitive Boundary Routing for Event Travel
 
-## Project Overview
+## Overview
+This project investigates whether outer-network routing advice for mass
+events (concerts, sports matches at Suncorp Stadium, Brisbane) should account
+for both individual preferences (time vs. fare) AND shared-network congestion.
 
-This project investigates routing decisions for travellers attending large events, with a focus on **boundary-node selection, traveller preferences, congestion, and routing distortion**.
-
-The project compares two approaches to routing:
-
-* **Congestion-naive routing** – travellers select a boundary node based primarily on their individual travel preferences, such as travel time and fare.
-* **Congestion-aware routing** – routing decisions additionally account for congestion caused by multiple travellers converging on the same boundary node.
-
-The aim is to investigate how ignoring congestion can affect routing recommendations and traveller outcomes.
-
----
-
-## Project Structure
-
-The repository contains four Python scripts:
-
-### `outer_routing_demo.py`
-
-This script provides the base outer-routing model used by the congestion analysis. It contains the network, boundary nodes, Pareto-optimal routing labels, and the time/fare scales used by the other routing scripts.
-
-### `congestion_distortion_demo.py`
-
-This script extends the outer-routing model to compare congestion-naive and congestion-aware routing.
-
-It:
-
-1. Generates a synthetic population of travellers.
-2. Calculates each traveller's preferred boundary node using individual time/fare preferences.
-3. Calculates the resulting traveller load at each boundary node.
-4. Converts the boundary-node load into a congestion penalty.
-5. Re-routes travellers using congestion-aware costs.
-6. Measures the distortion/regret associated with following the congestion-naive recommendation.
-7. Visualises the difference between naive and congestion-aware routing.
-
-### `suncorp_outer_routing_demo.py`
-
-This script contains the Suncorp-specific version of the outer-routing analysis.
-
-### `suncorp_congestion_distortion.py`
-
-This script contains the Suncorp-specific congestion and routing-distortion analysis.
-
----
+**Answer:** Yes. Both matter, and they interact measurably.
 
 ## Methodology
+- **Network:** Real Brisbane coordinates (Suncorp, Milton, CBD)
+- **Modes:** Walk, Transit via Milton, Transit via CBD, Rideshare
+- **Routing:** Multi-objective Pareto routing (time/fare trade-offs)
+- **Congestion:** Mode-specific penalties, validated with live TransLink data
+- **Population:** 300 synthetic attendees with realistic origins/preferences
 
-### Traveller Population
+## Quick Start
 
-The congestion analysis uses a synthetic population of **300 travellers**.
+1. **Build the network:**
+   ```bash
+   python3 realistic_network_builder.py
+   ```
+   Output: real Brisbane network with actual coordinates and fares
 
-Each traveller is assigned:
+2. **Interactive preference demo:**
+   ```bash
+   python3 realistic_routing_demo.py
+   ```
+   Drag slider to change time-vs-fare weight. Watch recommended mode flip.
 
-* An origin selected from the available origins.
-* A randomly generated time preference between 0 and 1.
+3. **Interactive congestion demo:**
+   ```bash
+   python3 realistic_congestion_demo.py
+   ```
+   Drag slider to increase congestion severity. Watch load redistribute.
 
-The time preference is combined with a corresponding fare preference:
+4. **Live TransLink integration:**
+   ```bash
+   python3 realistic_live_integration.py
+   ```
+   Fetches today's real service alerts. Shows how they change routing.
 
-```text
-fare weight = 1 - time weight
-```
+5. **Preference robustness (optional):**
+   ```bash
+   python3 rank_sensitivity_experiment.py
+   ```
+   Kendall's tau analysis: how stable are mode rankings under preference shifts?
 
-This allows different travellers to place different importance on travel time versus fare.
+6. **Persona-based analysis (optional):**
+   ```bash
+   python3 persona_analysis.py
+   ```
+   Named personas (Budget, Balanced, Time-pressed) show realistic diversity.
 
----
+## Key Results
 
-## Individual Routing Cost
+### Beat 1: Preferences Matter
+- **Claim:** An attendee's time-vs-fare weight changes which mode is recommended
+- **Evidence:** Interactive slider in realistic_routing_demo.py
+- **Finding:** YES. Dragging from w_time=0 (fare-focused) to w_time=1
+  (time-focused) changes the recommendation every time.
 
-For each traveller and boundary node, the model calculates a scalarised routing cost using the traveller's time and fare preferences.
+### Beat 2: Ignoring Congestion Costs Real Money
+- **Claim:** Advice that ignores mode congestion is systematically wrong
+- **Evidence:** Interactive slider in realistic_congestion_demo.py
+- **Finding:** YES. At k=0.5 congestion severity, mean regret=0.614,
+  and 100% of time-pressed attendees are redirected to less-congested modes.
 
-The cost is based on:
+### Beat 3: Stability Matters (Extended)
+- **Claim:** Iterative congestion feedback must be properly damped
+- **Evidence:** Comparison of undamped vs. MSA-damped iteration
+- **Finding:** Undamped iteration oscillates forever. MSA damping converges.
 
-```text
-Cost = time preference × normalised travel time
-     + fare preference × normalised fare
-```
+## Data Sources
 
-The cheapest available Pareto-optimal route is selected for each traveller and boundary node.
+- **Network coordinates:** Real (Suncorp Stadium, Milton Station, CBD Brisbane)
+- **Walking times:** Geodesic distance ÷ 5 km/h
+- **Transit fares:** Real TransLink rates ($3.50 per trip)
+- **Rideshare costs:** Real Brisbane Uber rates
+- **Live alerts:** Real TransLink GTFS-Realtime public feed (no API key required)
 
----
+## Files
 
-## Congestion-Naive Routing
+| File | Purpose |
+|------|---------|
+| realistic_network_builder.py | Build the real Brisbane network |
+| realistic_routing_demo.py | Interactive preference demo |
+| realistic_congestion_demo.py | Interactive congestion demo |
+| realistic_live_integration.py | Live TransLink data integration |
+| rank_sensitivity_experiment.py | Preference robustness (Kendall's tau) |
+| persona_analysis.py | Named personas (Budget/Balanced/Time-pressed) |
 
-In the initial routing stage, congestion is ignored.
+## References
 
-Each traveller independently selects the boundary node with the lowest individualised routing cost.
+[1] Hart, Nilsson, Raphael, "A formal basis for the heuristic determination
+    of minimum cost paths," IEEE Trans. Syst. Sci. Cybern., vol. 4, 1968.
 
-The number of travellers selecting each boundary node is then calculated to obtain the **naive load**.
+[2] Mandow & Pérez-de-la-Cruz, "A new approach to multiobjective A* search,"
+    Proc. IJCAI, 2005.
 
----
+[3] Peeta & Ziliaskopoulos, "Foundations of dynamic traffic assignment,"
+    Netw. Spat. Econ., vol. 1, 2001.
 
-## Congestion-Aware Routing
-
-The naive load is used to construct a simple congestion penalty for each boundary node.
-
-The congestion penalty is represented as:
-
-```text
-g_j = k × naive_load_j
-```
-
-where:
-
-* `g_j` is the congestion penalty for boundary node `j`
-* `k` is the congestion severity
-* `naive_load_j` is the number of travellers initially selecting boundary node `j`
-
-The congestion-aware routing cost then incorporates this additional penalty.
-
-This provides a simplified representation of congestion near the event venue rather than a full inner-network traffic assignment.
-
----
-
-## Routing Distortion / Regret
-
-The model compares the cost of following the congestion-naive recommendation with the cost of following the congestion-aware recommendation.
-
-For each traveller, the distortion is calculated as:
-
-```text
-D_i = | C_aware(j_naive) - C_aware(j_aware) |
-```
-
-This measures the regret associated with selecting the naive recommendation when the actual routing environment includes congestion.
-
-The model also calculates the proportion of travellers whose recommended boundary node changes after congestion is considered.
-
----
-
-## Visualisations
-
-`congestion_distortion_demo.py` produces three visualisations:
-
-### 1. Congestion Penalty
-
-Shows the congestion penalty associated with each boundary node.
-
-### 2. Traveller Load
-
-Compares the number of travellers assigned to each boundary node under:
-
-* Naive routing
-* Congestion-aware routing
-
-### 3. Routing Regret Distribution
-
-Shows the distribution of traveller-level regret/distortion.
-
-The plot also reports:
-
-* Mean regret
-* Percentage of travellers redirected by the congestion-aware model
+## Author
+Saahil Dharmaji, University of Queensland, DATA7901 Capstone Project
 
 ---
-
-## Interactive Congestion Analysis
-
-The congestion analysis includes an interactive slider controlling the congestion severity parameter `k`.
-
-The parameter ranges from:
-
-```text
-k = 0.0 to 1.0
-```
-
-When:
-
-```text
-k = 0
-```
-
-there is no congestion penalty, so congestion-aware routing becomes equivalent to naive routing.
-
-Increasing `k` increases the congestion penalty associated with heavily used boundary nodes and can cause travellers to redistribute across alternative boundary nodes.
-
----
-
-## Requirements
-
-The Python scripts use the following main libraries:
-
-* Python 3
-* NumPy
-* Matplotlib
-
-The congestion distortion model also uses:
-
-* `matplotlib.widgets.Slider`
-* Python's built-in `collections.Counter`
-
----
-
-## How to Run
-
-Clone or download this repository and open a terminal in the project directory.
-
-The congestion distortion demonstration can be run using:
-
-```bash
-python congestion_distortion_demo.py
-```
-
-The script imports `outer_routing_demo.py`, so both files should remain in the same project directory.
-
-The Suncorp-specific scripts can similarly be run from the repository directory:
-
-```bash
-python suncorp_outer_routing_demo.py
-python suncorp_congestion_distortion.py
-```
-
-If your system uses `python3` instead of `python`, use:
-
-```bash
-python3 congestion_distortion_demo.py
-```
-
----
-
-## Repository Structure
-
-```text
-Capstone_Project/
-│
-├── README.md
-├── congestion_distortion_demo.py
-├── outer_routing_demo.py
-├── suncorp_congestion_distortion.py
-└── suncorp_outer_routing_demo.py
-```
-
----
-
-## Current Scope and Limitations
-
-The congestion model provides a simplified representation of congestion.
 
 In particular, the congestion penalty is derived from the initial naive boundary-node load. It is therefore a **proxy for congestion near the venue**, rather than a complete inner-network traffic assignment.
 
